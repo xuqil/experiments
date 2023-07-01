@@ -1,0 +1,29 @@
+version: '3.8'
+services:
+  redis:
+    image: docker.io/bitnami/redis:7.0
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+    ports:
+      - '6379:6379'
+  #    volumes:
+  #      - './data/redis:/bitnami/redis/data'
+
+  mysql:
+    restart: always
+    image: mysql:5.7.18
+    container_name: mysql-lable
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+      - ./conf/my.cnf:/etc/my.cnf
+      - ./script/mysql/:/docker-entrypoint-initdb.d/
+    environment:
+      - "MYSQL_ROOT_PASSWORD=yourpassword"
+      - "MYSQL_DATABASE=yourdbname"
+      - "TZ=Asia/Shanghai"
+    ports:
+      - 3306:3306
+volumes:
+  cache:
+    driver: local
+
