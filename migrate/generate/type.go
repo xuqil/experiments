@@ -3,15 +3,15 @@ package generate
 import (
 	"fmt"
 	"github.com/brianvoe/gofakeit/v6"
-	"github.com/xuqil/experiments/migrate"
+	"github.com/xuqil/experiments/migrate/models"
 	"gorm.io/gorm"
 	"log"
 )
 
 type Generate struct {
 	db         *gorm.DB
-	updateList []uint
-	deleteList []uint
+	updateList []uint64
+	deleteList []uint64
 	capacity   int
 }
 
@@ -21,15 +21,15 @@ func NewGenerate(db *gorm.DB, capacity int) *Generate {
 	}
 	return &Generate{
 		db:         db,
-		updateList: make([]uint, 0, capacity),
-		deleteList: make([]uint, 0, capacity),
+		updateList: make([]uint64, 0, capacity),
+		deleteList: make([]uint64, 0, capacity),
 		capacity:   capacity,
 	}
 }
 
 // InsertBatch 批量新建数据
 func (g *Generate) InsertBatch(batch int) error {
-	users := make([]*migrate.User, 0, batch)
+	users := make([]*models.User, 0, batch)
 	for i := 0; i < batch; i++ {
 		user := FakeUser()
 		users = append(users, user)
@@ -65,7 +65,7 @@ func (g *Generate) Update() error {
 		user := FakeUser()
 		user.ID = g.updateList[i]
 		user.Name = fmt.Sprintf("update-%d", user.ID)
-		err := g.db.Where("id=?", user.ID).Model(&migrate.User{}).Updates(user).Error
+		err := g.db.Where("id=?", user.ID).Model(&models.User{}).Updates(user).Error
 		if err != nil {
 			return err
 		}
@@ -77,7 +77,7 @@ func (g *Generate) Update() error {
 func (g *Generate) Delete() error {
 	for i := 0; i < len(g.deleteList); i++ {
 		id := g.deleteList[i]
-		err := g.db.Where("id=?", id).Delete(&migrate.User{}).Error
+		err := g.db.Where("id=?", id).Delete(&models.User{}).Error
 		if err != nil {
 			return err
 		}
@@ -86,8 +86,8 @@ func (g *Generate) Delete() error {
 	return nil
 }
 
-func FakeUser() *migrate.User {
-	return &migrate.User{
+func FakeUser() *models.User {
+	return &models.User{
 		Name:     gofakeit.Name(),
 		Email:    gofakeit.Email(),
 		Birthday: gofakeit.Date(),

@@ -1,4 +1,4 @@
-package migrate
+package dwrite
 
 import (
 	"context"
@@ -7,56 +7,55 @@ import (
 	"gorm.io/gorm"
 	"log"
 	"strings"
-	"time"
 )
 
-type User struct {
-	ID        uint
-	Name      string
-	Email     string
-	Birthday  time.Time
-	CreatedAt time.Time
-	UpdatedAt time.Time
-}
+type Model int
+
+const (
+	SourceWrite Model = iota // 只写源库
+	DoubleWrite              // 双写，先写和读源库，再写目标库
+	Transition               // 双写，先写和读目标库，再写源库
+	TargetWrite              //切换至目标库
+)
 
 // DoubleWritePool 实现双写
 type DoubleWritePool struct {
-	// mode 的几种模式:
+	// model 的几种模式:
 	// 1. source-write: 只写源库
 	// 2. double-write: 双写，先写和读源库，再写目标库
 	// 3. transition: 双写，先写和读目标库，再写源库
 	// 4. target-write: 切换至目标库
-	mode   string
+	model  Model
 	source gorm.ConnPool
 	target gorm.ConnPool
 }
 
 func NewDoubleWritePool(source gorm.ConnPool, target gorm.ConnPool) *DoubleWritePool {
 	return &DoubleWritePool{
-		mode:   "source-write",
+		model:  SourceWrite,
 		source: source,
 		target: target,
 	}
 }
 
-func (d *DoubleWritePool) SetMode(mode string) {
-	d.mode = mode
+func (d *DoubleWritePool) SetMode(mode Model) {
+	d.model = mode
 }
 
 func (d *DoubleWritePool) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
 	log.Println("prepare")
-	if d.mode == "target-write" {
+	if d.model == TargetWrite {
 		return d.target.PrepareContext(ctx, query)
 	}
 	return d.source.PrepareContext(ctx, query)
 }
 
 func (d *DoubleWritePool) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-	switch d.mode {
-	case "source-write": // 写源库
+	switch d.model {
+	case SourceWrite: // 写源库
 		log.Println("source-write")
 		return d.source.ExecContext(ctx, query, args...)
-	case "double-write": // 双写，先写和读源库，再写目标库
+	case DoubleWrite: // 双写，先写和读源库，再写目标库
 		log.Println("double-write", query)
 		result, err := d.source.ExecContext(ctx, query, args...)
 		if err != nil {
@@ -89,7 +88,7 @@ func (d *DoubleWritePool) ExecContext(ctx context.Context, query string, args ..
 				qBuffer.WriteByte(' ')
 				qBuffer.WriteString(s[2]) // `user`
 				qBuffer.WriteByte(' ')
-				if !strings.Contains(fields, "ID") { // 创建时没有指定 ID
+				if !strings.Contains(fields, "`ID`") { // 创建时没有指定 ID
 					// 插入 ID 字段
 					qBuffer.WriteByte(fields[0])
 					qBuffer.WriteString("`id`,")
@@ -143,9 +142,9 @@ func (d *DoubleWritePool) ExecContext(ctx context.Context, query string, args ..
 				//	插入单条记录
 				//  INSERT INTO `users` (`name`,`email`,`birthday`,`created_at`,`updated_at`) VALUES (?,?,?,?,?)
 				s := strings.Split(query, " ")
-				fields := s[3]                       // 插入的字段
-				placeholder := s[5]                  // 占位符
-				if !strings.Contains(fields, "ID") { // 创建时没有指定 ID
+				fields := s[3]                         // 插入的字段
+				placeholder := s[5]                    // 占位符
+				if !strings.Contains(fields, "`ID`") { // 创建时没有指定 ID
 					// 插入 ID 字段
 					fields = fmt.Sprintf("%c%s%s", fields[0], "`id`,", fields[1:])
 					// 新增占位符
@@ -156,7 +155,7 @@ func (d *DoubleWritePool) ExecContext(ctx context.Context, query string, args ..
 				newQuery := strings.Join(s, " ")
 				newArgs := make([]any, len(args)+1)
 				newArgs[0] = lastInsertId
-				for i, _ := range args {
+				for i := range args {
 					newArgs[i+1] = args[i]
 				}
 				log.Println("newQuery:", newQuery)
@@ -189,7 +188,7 @@ func (d *DoubleWritePool) ExecContext(ctx context.Context, query string, args ..
 		//	log.Println("ID:", lastInsertId)
 		//}()
 		return result, err
-	case "transition": // 双写，先写和读目标库，再写源库
+	case Transition: // 双写，先写和读目标库，再写源库
 		log.Println("transition")
 		r, err := d.target.ExecContext(ctx, query, args...)
 		if err != nil {
@@ -204,7 +203,7 @@ func (d *DoubleWritePool) ExecContext(ctx context.Context, query string, args ..
 			// TODO:写源库
 			log.Println("ID:", id)
 		}()
-	case "target-write": // 写目标库
+	case TargetWrite: // 写目标库
 		log.Println("target-write")
 		return d.target.ExecContext(ctx, query, args...)
 	}
@@ -213,12 +212,12 @@ func (d *DoubleWritePool) ExecContext(ctx context.Context, query string, args ..
 }
 
 func (d *DoubleWritePool) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	switch d.mode {
-	case "source-write", "double-write":
+	switch d.model {
+	case SourceWrite, DoubleWrite:
 		return d.source.QueryContext(ctx, query, args...)
-	case "transition":
+	case Transition:
 		return d.target.QueryContext(ctx, query, args...)
-	case "target-write":
+	case TargetWrite:
 		return d.target.QueryContext(ctx, query, args...)
 	default:
 		return d.source.QueryContext(ctx, query, args...)
@@ -226,12 +225,12 @@ func (d *DoubleWritePool) QueryContext(ctx context.Context, query string, args .
 }
 
 func (d *DoubleWritePool) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
-	switch d.mode {
-	case "source-write", "double-write":
+	switch d.model {
+	case SourceWrite, DoubleWrite:
 		return d.source.QueryRowContext(ctx, query, args...)
-	case "transition":
+	case Transition:
 		return d.target.QueryRowContext(ctx, query, args...)
-	case "target-write":
+	case TargetWrite:
 		return d.target.QueryRowContext(ctx, query, args...)
 	default:
 		return d.source.QueryRowContext(ctx, query, args...)

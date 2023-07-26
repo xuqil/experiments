@@ -1,0 +1,32 @@
+version: '3.8'
+services:
+  mysql-source:
+    restart: always
+    image: mysql:5.7.18
+    container_name: mysql-source
+    volumes:
+      - ./data/source/mysql:/var/lib/mysql
+      - ./conf/source/my.cnf:/etc/my.cnf
+      - ./script/mysql/:/docker-entrypoint-initdb.d/
+    environment:
+      - "MYSQL_ROOT_PASSWORD=Mysql_1234"
+      - "MYSQL_DATABASE=test"
+      - "TZ=Asia/Shanghai"
+    ports:
+      - "3306:3306"
+
+  mysql-target:
+    restart: always
+    image: mysql:5.7.18
+    container_name: mysql-target
+    volumes:
+      - ./data/target/mysql:/var/lib/mysql
+      - ./conf/target/my.cnf:/etc/my.cnf
+    environment:
+      - "MYSQL_ROOT_PASSWORD=Mysql_1234"
+      - "MYSQL_DATABASE=test"
+      - "TZ=Asia/Shanghai"
+    ports:
+      - "3307:3306"
+
+
