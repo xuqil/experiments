@@ -30,9 +30,9 @@ func (u *User) Create(ctx context.Context, db *gorm.DB) error {
 	return db.WithContext(ctx).Create(u).Error
 }
 
-// Save 更新用户
-func (u *User) Save(ctx context.Context, db *gorm.DB) error {
-	return db.WithContext(ctx).Save(u).Error
+// Update 更新用户，注意不触发 UpdatedAt 自动更新
+func (u *User) Update(ctx context.Context, db *gorm.DB) error {
+	return db.WithContext(ctx).UpdateColumns(u).Error
 }
 
 // Delete 删除用户
@@ -53,6 +53,13 @@ func DeleteUserBatch(ctx context.Context, db *gorm.DB, idList []uint64) error {
 // FetchUserBatch 批量获取用户
 func FetchUserBatch(ctx context.Context, db *gorm.DB, prevID uint64, limit int) (users []User, err error) {
 	err = db.WithContext(ctx).Where("id>?", prevID).Order("id").Limit(limit).Find(&users).Error
+	return
+}
+
+// FetchUserInterval 按区间批量获取用户
+func FetchUserInterval(ctx context.Context, db *gorm.DB, startID uint64, limit int) (users []User, err error) {
+	err = db.WithContext(ctx).Where("id>=?", startID).Where("id<?", startID+uint64(limit)).
+		Order("id").Find(&users).Error
 	return
 }
 

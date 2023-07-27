@@ -7,6 +7,7 @@ import (
 	"github.com/xuqil/experiments/migrate/models"
 	"gorm.io/gorm"
 	"log"
+	"time"
 )
 
 func main() {
@@ -23,51 +24,55 @@ func main() {
 	}
 }
 
-type FixData struct {
-	sdb *gorm.DB
-	tdb *gorm.DB
+type FixOptional func(f *FixData)
+
+func WithSleep(d time.Duration) FixOptional {
+	return func(f *FixData) {
+		f.d = d
+	}
 }
 
-func NewFixData(sdb *gorm.DB, tdb *gorm.DB) *FixData {
-	return &FixData{
+type FixData struct {
+	d   time.Duration // 休眠时长
+	sdb *gorm.DB      // 源库
+	tdb *gorm.DB      // 目标库
+}
+
+func NewFixData(sdb *gorm.DB, tdb *gorm.DB, opts ...FixOptional) *FixData {
+	f := &FixData{
+		d:   time.Millisecond * 50,
 		sdb: sdb,
 		tdb: tdb,
 	}
+	for _, opt := range opts {
+		opt(f)
+	}
+	return f
 }
 
 // FullFix 全量比对 fix
 func (f *FixData) FullFix(ctx context.Context, batch int) error {
 	var (
-		first   = true
-		sPrevID uint64
-		tPrevID uint64
-		sUsers  []models.User
-		tUsers  []models.User
-		err     error
+		first  = true
+		prevID uint64
+		sUsers []models.User
+		tUsers []models.User
+		err    error
 	)
 
-	// TODO: 两者的 prevID 可能不一致，会导致查询的数据区间不同
 	for first || (len(sUsers) != 0 && len(tUsers) != 0) {
-		log.Println("source:", len(sUsers), "target:", len(tUsers))
+		//log.Println("source:", len(sUsers), "target:", len(tUsers))
 		first = false
 		// 从源库获取 User
-		sUsers, err = models.FetchUserBatch(ctx, f.sdb, sPrevID, batch)
+		sUsers, err = models.FetchUserInterval(ctx, f.sdb, prevID, batch)
 		if err != nil {
 			return err
-		}
-		// 更新 prevID
-		if len(sUsers) > 0 {
-			sPrevID = sUsers[len(sUsers)-1].ID
 		}
 
 		// 从目标库获取 User
-		tUsers, err = models.FetchUserBatch(ctx, f.tdb, tPrevID, batch)
+		tUsers, err = models.FetchUserInterval(ctx, f.tdb, prevID, batch)
 		if err != nil {
 			return err
-		}
-		// 更新 prevID
-		if len(tUsers) > 0 {
-			tPrevID = tUsers[len(tUsers)-1].ID
 		}
 
 		// 转为 map 类型
@@ -84,8 +89,8 @@ func (f *FixData) FullFix(ctx context.Context, batch int) error {
 				if su.Checksum() == tu.Checksum() { // 记录相同
 					continue
 				} else {
-					//log.Println("从目的库中更新 ID:", tu.ID)
-					if er := su.Save(ctx, f.tdb); er != nil {
+					log.Println("从目的库中更新 ID:", tu.ID)
+					if er := su.Update(ctx, f.tdb); er != nil {
 						log.Println(fmt.Errorf("更新目的库失败，ID: %d err:%w", tu.ID, er))
 					}
 				}
@@ -107,10 +112,13 @@ func (f *FixData) FullFix(ctx context.Context, batch int) error {
 		}
 		if len(deleteIDList) > 0 {
 			log.Println("1-从目标库中批量删除的数量:", len(deleteIDList))
-			//if er := models.DeleteUserBatch(ctx, f.tdb, deleteIDList); er != nil {
-			//	log.Println(fmt.Errorf("删除目的库失败， err:%w", er))
-			//}
+			if er := models.DeleteUserBatch(ctx, f.tdb, deleteIDList); er != nil {
+				log.Println(fmt.Errorf("删除目的库失败， err:%w", er))
+			}
 		}
+
+		time.Sleep(f.d)
+		prevID += uint64(batch)
 	}
 
 	// 处理剩下的记录
@@ -128,38 +136,36 @@ func (f *FixData) FullFix(ctx context.Context, batch int) error {
 			}
 		}
 		// 从源库获取 User
-		sUsers, err = models.FetchUserBatch(ctx, f.sdb, sPrevID, batch)
+		sUsers, err = models.FetchUserInterval(ctx, f.sdb, prevID, batch)
 		if err != nil {
 			return err
 		}
-		if len(sUsers) > 0 {
-			sPrevID = sUsers[len(sUsers)-1].ID
-		}
+		prevID += uint64(batch)
+		time.Sleep(f.d)
 	}
 
-	//for len(tUsers) != 0 {
-	//	log.Println("target 处理剩下的记录")
-	//	deleteIDList := make([]uint64, 0)
-	//	for i := range tUsers {
-	//		u := &tUsers[i]
-	//		//log.Println("从目的库中删除 ID:", u.ID)
-	//		deleteIDList = append(deleteIDList, u.ID)
-	//	}
-	//	if len(deleteIDList) > 0 {
-	//		log.Println("2-从目标库中批量删除的数量:", len(deleteIDList))
-	//		if er := models.DeleteUserBatch(ctx, f.tdb, deleteIDList); er != nil {
-	//			log.Println(fmt.Errorf("删除目的库失败 err:%w", er))
-	//		}
-	//	}
-	//	// 从目的库获取 User
-	//	tUsers, err = models.FetchUserBatch(ctx, f.tdb, tPrevID, batch)
-	//	if err != nil {
-	//		return err
-	//	}
-	//	if len(tUsers) > 0 {
-	//		tPrevID = tUsers[len(tUsers)-1].ID
-	//	}
-	//}
+	for len(tUsers) != 0 {
+		log.Println("target 处理剩下的记录")
+		deleteIDList := make([]uint64, 0)
+		for i := range tUsers {
+			u := &tUsers[i]
+			//log.Println("从目的库中删除 ID:", u.ID)
+			deleteIDList = append(deleteIDList, u.ID)
+		}
+		if len(deleteIDList) > 0 {
+			log.Println("2-从目标库中批量删除的数量:", len(deleteIDList))
+			if er := models.DeleteUserBatch(ctx, f.tdb, deleteIDList); er != nil {
+				log.Println(fmt.Errorf("删除目的库失败 err:%w", er))
+			}
+		}
+		// 从目的库获取 User
+		tUsers, err = models.FetchUserInterval(ctx, f.tdb, prevID, batch)
+		if err != nil {
+			return err
+		}
+		prevID += uint64(batch)
+		time.Sleep(f.d)
+	}
 
 	return nil
 }

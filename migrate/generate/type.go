@@ -8,6 +8,7 @@ import (
 	"log"
 )
 
+// Generate 生成测试数据
 type Generate struct {
 	db         *gorm.DB
 	updateList []uint64
