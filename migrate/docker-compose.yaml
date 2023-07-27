@@ -2,7 +2,7 @@ version: '3.8'
 services:
   mysql-source:
     restart: always
-    image: mysql:5.7.18
+    image: mysql:5.7
     container_name: mysql-source
     volumes:
       - ./data/source/mysql:/var/lib/mysql
@@ -17,7 +17,7 @@ services:
 
   mysql-target:
     restart: always
-    image: mysql:5.7.18
+    image: mysql:5.7
     container_name: mysql-target
     volumes:
       - ./data/target/mysql:/var/lib/mysql
