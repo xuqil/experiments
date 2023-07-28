@@ -2,11 +2,9 @@ package models
 
 import (
 	"context"
-	"crypto/md5"
 	"fmt"
+	"github.com/xuqil/experiments/migrate/pkg/util"
 	"gorm.io/gorm"
-	"io"
-	"log"
 	"time"
 )
 
@@ -22,7 +20,7 @@ type User struct {
 // Checksum 校验和
 func (u *User) Checksum() string {
 	s := fmt.Sprintf("%s%s%s%s%s", u.Name, u.Email, u.Birthday, u.CreatedAt, u.UpdatedAt)
-	return MD5Checksum(s)
+	return util.MD5Checksum(s)
 }
 
 // Create 创建用户
@@ -67,18 +65,4 @@ func FetchUserInterval(ctx context.Context, db *gorm.DB, startID uint64, limit i
 func FetchUserByUpdatedAt(ctx context.Context, db *gorm.DB, updateAt time.Time) (users []User, err error) {
 	err = db.WithContext(ctx).Where("updated_at>?", updateAt).Order("id").Find(&users).Error
 	return
-}
-
-// Migrate 数据库表构造
-func Migrate(db *gorm.DB) {
-	if err := db.AutoMigrate(&User{}); err != nil {
-		log.Fatalln(err)
-	}
-}
-
-// MD5Checksum MD5 实现的校验和
-func MD5Checksum(val string) string {
-	h := md5.New()
-	_, _ = io.WriteString(h, val)
-	return string(h.Sum(nil))
 }

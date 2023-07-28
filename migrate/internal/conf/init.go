@@ -1,7 +1,8 @@
-package dwrite
+package conf
 
 import (
 	"database/sql"
+	"github.com/xuqil/experiments/migrate/pkg/dwrite"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"log"
@@ -33,7 +34,7 @@ func InitTargetDB() *gorm.DB {
 }
 
 // InitDoubleWriteDB 初始化双写 *gorm.DB 和 *DoubleWritePool
-func InitDoubleWriteDB() (*gorm.DB, *DoubleWritePool) {
+func InitDoubleWriteDB() (*gorm.DB, *dwrite.DoubleWritePool) {
 	sdb, err := sql.Open("mysql", sDsn)
 	if err != nil {
 		log.Fatalln(err)
@@ -48,8 +49,8 @@ func InitDoubleWriteDB() (*gorm.DB, *DoubleWritePool) {
 	tdb.SetMaxIdleConns(20)
 	tdb.SetMaxOpenConns(100)
 
-	pool := NewDoubleWritePool(sdb, tdb)
-	pool.SetMode(SourceWrite)
+	pool := dwrite.NewDoubleWritePool(sdb, tdb)
+	pool.SetMode(dwrite.SourceWrite)
 	dial := mysql.New(mysql.Config{
 		Conn: pool,
 	})

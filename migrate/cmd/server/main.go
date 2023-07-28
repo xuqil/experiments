@@ -3,9 +3,10 @@ package main
 import (
 	"errors"
 	"github.com/gin-gonic/gin"
-	"github.com/xuqil/experiments/migrate/dwrite"
-	"github.com/xuqil/experiments/migrate/generate"
-	"github.com/xuqil/experiments/migrate/models"
+	"github.com/xuqil/experiments/migrate/internal/conf"
+	"github.com/xuqil/experiments/migrate/internal/generate"
+	"github.com/xuqil/experiments/migrate/internal/models"
+	"github.com/xuqil/experiments/migrate/pkg/dwrite"
 	"gorm.io/gorm"
 	"log"
 	"net/http"
@@ -114,6 +115,6 @@ func CrudTask(db *gorm.DB) {
 }
 
 func Init() {
-	db, pool = dwrite.InitDoubleWriteDB()
+	db, pool = conf.InitDoubleWriteDB()
 	pool.SetMode(dwrite.SourceWrite)
 }

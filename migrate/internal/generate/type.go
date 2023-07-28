@@ -3,7 +3,7 @@ package generate
 import (
 	"fmt"
 	"github.com/brianvoe/gofakeit/v6"
-	"github.com/xuqil/experiments/migrate/models"
+	"github.com/xuqil/experiments/migrate/internal/models"
 	"gorm.io/gorm"
 	"log"
 )
