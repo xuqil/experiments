@@ -18,6 +18,6 @@ func main() {
 		if err != nil {
 			log.Println("批量插入失败:", err)
 		}
-		time.Sleep(time.Second * 1)
+		time.Sleep(time.Millisecond * 50)
 	}
 }

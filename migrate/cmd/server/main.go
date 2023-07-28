@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/xuqil/experiments/migrate/dwrite"
 	"github.com/xuqil/experiments/migrate/generate"
@@ -51,7 +52,7 @@ func (f *FakeServer) ChangeModel() gin.HandlerFunc {
 			ctx.JSON(http.StatusBadRequest, gin.H{"msg": "错误的 model", "code": 1})
 			return
 		}
-		model := dwrite.Model(m)
+		model := dwrite.Mode(m)
 		f.pool.SetMode(model)
 		log.Println("model change to:", model)
 		ctx.JSON(http.StatusOK, gin.H{"msg": "success", "code": 0})
@@ -70,6 +71,10 @@ func (f *FakeServer) GetUser() gin.HandlerFunc {
 		user := models.User{}
 		err = f.db.WithContext(ctx.Request.Context()).Where("id=?", id).First(&user).Error
 		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				ctx.JSON(http.StatusBadRequest, gin.H{"msg": "not found", "code": 1, "data": nil})
+				return
+			}
 			log.Println("error:", err)
 			ctx.JSON(http.StatusBadRequest, gin.H{"msg": "内部错误", "code": 1})
 			return

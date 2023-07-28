@@ -9,43 +9,43 @@ import (
 	"strings"
 )
 
-type Model int
+type Mode int
 
 const (
-	SourceWrite Model = iota // 只写源库
-	DoubleWrite              // 双写，先写和读源库，再写目标库
-	Transition               // 双写，先写和读目标库，再写源库
-	TargetWrite              //切换至目标库
+	SourceWrite Mode = iota // 只写源库
+	DoubleWrite             // 双写，先写和读源库，再写目标库
+	Transition              // 双写，先写和读目标库，再写源库
+	TargetWrite             //切换至目标库
 )
 
 // DoubleWritePool 实现双写
 type DoubleWritePool struct {
-	model  Model
+	mode   Mode
 	source gorm.ConnPool
 	target gorm.ConnPool
 }
 
 func NewDoubleWritePool(source gorm.ConnPool, target gorm.ConnPool) *DoubleWritePool {
 	return &DoubleWritePool{
-		model:  SourceWrite,
+		mode:   SourceWrite,
 		source: source,
 		target: target,
 	}
 }
 
-func (d *DoubleWritePool) SetMode(mode Model) {
-	d.model = mode
+func (d *DoubleWritePool) SetMode(mode Mode) {
+	d.mode = mode
 }
 
 func (d *DoubleWritePool) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
-	if d.model == TargetWrite || d.model == Transition {
+	if d.mode == TargetWrite || d.mode == Transition {
 		return d.target.PrepareContext(ctx, query)
 	}
 	return d.source.PrepareContext(ctx, query)
 }
 
 func (d *DoubleWritePool) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-	switch d.model {
+	switch d.mode {
 	case SourceWrite: // 写源库
 		log.Println("source-write")
 		return d.source.ExecContext(ctx, query, args...)
@@ -267,7 +267,7 @@ func (d *DoubleWritePool) ExecContext(ctx context.Context, query string, args ..
 }
 
 func (d *DoubleWritePool) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	switch d.model {
+	switch d.mode {
 	case SourceWrite, DoubleWrite:
 		return d.source.QueryContext(ctx, query, args...)
 	case Transition:
@@ -280,7 +280,7 @@ func (d *DoubleWritePool) QueryContext(ctx context.Context, query string, args .
 }
 
 func (d *DoubleWritePool) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
-	switch d.model {
+	switch d.mode {
 	case SourceWrite, DoubleWrite:
 		return d.source.QueryRowContext(ctx, query, args...)
 	case Transition:
