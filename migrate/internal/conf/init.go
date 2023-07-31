@@ -5,7 +5,10 @@ import (
 	"github.com/xuqil/experiments/migrate/pkg/dwrite"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 	"log"
+	"os"
+	"time"
 )
 
 var (
@@ -13,10 +16,23 @@ var (
 	tDsn = "root:Mysql_1234@tcp(127.0.0.1:3307)/test?charset=utf8mb4&parseTime=True&loc=Local"
 )
 
+var l = logger.New(
+	log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
+	logger.Config{
+		SlowThreshold:             time.Second,   // Slow SQL threshold
+		LogLevel:                  logger.Silent, // Log level
+		IgnoreRecordNotFoundError: true,          // Ignore ErrRecordNotFound error for logger
+		ParameterizedQueries:      true,          // Don't include params in the SQL log
+		Colorful:                  false,         // Disable color
+	},
+)
+
 // InitSourceDB 初始化源库 *gorm.DB
 func InitSourceDB() *gorm.DB {
 	dia := mysql.Open(sDsn)
-	db, err := gorm.Open(dia)
+	db, err := gorm.Open(dia, &gorm.Config{
+		Logger: l,
+	})
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -26,7 +42,9 @@ func InitSourceDB() *gorm.DB {
 // InitTargetDB 初始化目标库 *gorm.DB
 func InitTargetDB() *gorm.DB {
 	dia := mysql.Open(tDsn)
-	db, err := gorm.Open(dia)
+	db, err := gorm.Open(dia, &gorm.Config{
+		Logger: l,
+	})
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -55,7 +73,9 @@ func InitDoubleWriteDB() (*gorm.DB, *dwrite.DoubleWritePool) {
 		Conn: pool,
 	})
 
-	db, err := gorm.Open(dial, &gorm.Config{})
+	db, err := gorm.Open(dial, &gorm.Config{
+		Logger: l,
+	})
 	if err != nil {
 		log.Fatalln(err)
 	}

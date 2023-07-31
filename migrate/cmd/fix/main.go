@@ -5,6 +5,7 @@ import (
 	"github.com/withlin/canal-go/client"
 	"github.com/xuqil/experiments/migrate/internal/conf"
 	"github.com/xuqil/experiments/migrate/internal/fix"
+	"github.com/xuqil/experiments/migrate/internal/models"
 	"log"
 	"time"
 )
@@ -12,29 +13,26 @@ import (
 func main() {
 	sdb := conf.InitSourceDB() // 源库
 	tdb := conf.InitTargetDB() // 目标库
-	//models.Migrate(tdb)
+	models.Migrate(tdb)
 
 	connector := client.NewSimpleCanalConnector("127.0.0.1", 11111, "", "",
 		"example", 60000, 60*60*1000)
-	err := connector.Connect()
-	if err != nil {
+	if err := connector.Connect(); err != nil {
 		log.Fatalln(err)
 	}
 
 	// 切换到目标库前，以源库为准
-	f := fix.NewFixData(sdb, tdb, fix.WithSleep(time.Second*1), fix.WithCanal(connector))
-	//err := f.FixFull(context.Background(), 1000)
-	//if err != nil {
-	//	log.Fatalln(err)
-	//}
+	f := fix.NewFixUser(sdb, tdb, fix.WithSleep(time.Millisecond*1), fix.WithCanal(connector))
 
-	//err = f.FixIncByUpdatedAt(context.Background())
-	//if err != nil {
-	//	log.Fatalln(err)
-	//}
-
-	err = f.FixIncByCDC(context.Background(), 100)
-	if err != nil {
+	if err := f.FixFull(context.Background(), 1000); err != nil {
 		log.Fatalln(err)
 	}
+
+	//if err := f.FixIncByUpdatedAt(context.Background()); err != nil {
+	//	log.Fatalln(err)
+	//}
+
+	//if err := f.FixIncByCDC(context.Background(), 100); err != nil {
+	//	log.Fatalln(err)
+	//}
 }

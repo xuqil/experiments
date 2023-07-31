@@ -18,11 +18,11 @@ const (
 	TargetWrite             //切换至目标库
 )
 
-// DoubleWritePool 实现双写
+// DoubleWritePool 实现数据库双写
 type DoubleWritePool struct {
-	mode   Mode
-	source gorm.ConnPool
-	target gorm.ConnPool
+	mode   Mode          // 数据库双写模式，可以记录在内存、 Redis 和注册中心等地方
+	source gorm.ConnPool // 源库
+	target gorm.ConnPool // 目标库
 }
 
 func NewDoubleWritePool(source gorm.ConnPool, target gorm.ConnPool) *DoubleWritePool {
@@ -33,6 +33,7 @@ func NewDoubleWritePool(source gorm.ConnPool, target gorm.ConnPool) *DoubleWrite
 	}
 }
 
+// SetMode 设置双写模式
 func (d *DoubleWritePool) SetMode(mode Mode) {
 	d.mode = mode
 }
@@ -268,26 +269,18 @@ func (d *DoubleWritePool) ExecContext(ctx context.Context, query string, args ..
 
 func (d *DoubleWritePool) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
 	switch d.mode {
-	case SourceWrite, DoubleWrite:
-		return d.source.QueryContext(ctx, query, args...)
-	case Transition:
+	case Transition, TargetWrite: // 切换为目标库后读目标库
 		return d.target.QueryContext(ctx, query, args...)
-	case TargetWrite:
-		return d.target.QueryContext(ctx, query, args...)
-	default:
+	default: // 默认读源库
 		return d.source.QueryContext(ctx, query, args...)
 	}
 }
 
 func (d *DoubleWritePool) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
 	switch d.mode {
-	case SourceWrite, DoubleWrite:
-		return d.source.QueryRowContext(ctx, query, args...)
-	case Transition:
+	case Transition, TargetWrite: // 切换为目标库后读目标库
 		return d.target.QueryRowContext(ctx, query, args...)
-	case TargetWrite:
-		return d.target.QueryRowContext(ctx, query, args...)
-	default:
+	default: // 默认读源库
 		return d.source.QueryRowContext(ctx, query, args...)
 	}
 }

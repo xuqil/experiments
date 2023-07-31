@@ -6,6 +6,8 @@ import (
 	"github.com/xuqil/experiments/migrate/internal/models"
 	"gorm.io/gorm"
 	"log"
+	"sync"
+	"time"
 )
 
 // Generate 生成测试数据
@@ -14,6 +16,7 @@ type Generate struct {
 	updateList []uint64
 	deleteList []uint64
 	capacity   int
+	lock       sync.RWMutex
 }
 
 func NewGenerate(db *gorm.DB, capacity int) *Generate {
@@ -22,8 +25,8 @@ func NewGenerate(db *gorm.DB, capacity int) *Generate {
 	}
 	return &Generate{
 		db:         db,
-		updateList: make([]uint64, 0, capacity),
-		deleteList: make([]uint64, 0, capacity),
+		updateList: make([]uint64, 0),
+		deleteList: make([]uint64, 0),
 		capacity:   capacity,
 	}
 }
@@ -43,29 +46,38 @@ func (g *Generate) InsertBatch(batch int) error {
 // Insert 新建数据
 func (g *Generate) Insert() error {
 	user := FakeUser()
+	g.lock.Lock()
+	defer g.lock.Unlock()
+
 	err := g.db.Create(&user).Error
 	if err != nil {
 		return err
 	}
-	if len(g.updateList) >= g.capacity {
-		if g.capacity < 5 {
-			return err
-		}
-		g.updateList = append(g.updateList[:3], g.updateList[5:]...)
-		g.deleteList = append(g.deleteList[:1], g.deleteList[2:]...)
-	}
 	g.updateList = append(g.updateList, user.ID)
 	g.deleteList = append(g.deleteList, user.ID)
+
+	if len(g.updateList) >= g.capacity && g.capacity > 5 {
+		g.updateList = append(g.updateList[:3], g.updateList[5:]...)
+		if len(g.deleteList) > 2 {
+			g.deleteList = g.deleteList[:1]
+		}
+	}
+
 	log.Println("Inserted ID:", user.ID)
 	return nil
 }
 
 // Update 更新
 func (g *Generate) Update() error {
+	g.lock.RLock()
+	defer g.lock.RUnlock()
+
+	now := time.Now()
 	for i := 0; i < len(g.updateList); i++ {
 		user := FakeUser()
 		user.ID = g.updateList[i]
 		user.Name = fmt.Sprintf("update-%d", user.ID)
+		user.UpdatedAt = now
 		err := g.db.Where("id=?", user.ID).Model(&models.User{}).Updates(user).Error
 		if err != nil {
 			return err
@@ -76,6 +88,9 @@ func (g *Generate) Update() error {
 }
 
 func (g *Generate) Delete() error {
+	g.lock.RLock()
+	defer g.lock.RUnlock()
+
 	for i := 0; i < len(g.deleteList); i++ {
 		id := g.deleteList[i]
 		err := g.db.Where("id=?", id).Delete(&models.User{}).Error

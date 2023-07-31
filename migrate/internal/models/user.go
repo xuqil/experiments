@@ -14,7 +14,7 @@ type User struct {
 	Email     string
 	Birthday  time.Time
 	CreatedAt time.Time
-	UpdatedAt time.Time `gorm:"index"'`
+	UpdatedAt time.Time `gorm:"index"`
 }
 
 // Checksum 校验和
@@ -64,5 +64,17 @@ func FetchUserInterval(ctx context.Context, db *gorm.DB, startID uint64, limit i
 // FetchUserByUpdatedAt 按更新时间获取用户
 func FetchUserByUpdatedAt(ctx context.Context, db *gorm.DB, updateAt time.Time) (users []User, err error) {
 	err = db.WithContext(ctx).Where("updated_at>?", updateAt).Order("id").Find(&users).Error
+	return
+}
+
+// FetchUserByIDList 按 ID 获取用户
+func FetchUserByIDList(ctx context.Context, db *gorm.DB, idList []uint64) (users []User, err error) {
+	err = db.WithContext(ctx).Find(&users, idList).Error
+	return
+}
+
+// FetchUserByID 按 ID 获取用户
+func FetchUserByID(ctx context.Context, db *gorm.DB, id uint64) (user User, err error) {
+	err = db.WithContext(ctx).Where("id=?", id).First(&user).Error
 	return
 }

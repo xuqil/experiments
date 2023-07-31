@@ -47,8 +47,8 @@ func NewFakeServer(db *gorm.DB, server *gin.Engine, pool *dwrite.DoubleWritePool
 // ChangeModel 修改双写模式
 func (f *FakeServer) ChangeModel() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		modelStr := ctx.Query("model")
-		m, err := strconv.Atoi(modelStr)
+		modeStr := ctx.Query("value")
+		m, err := strconv.Atoi(modeStr)
 		if err != nil {
 			ctx.JSON(http.StatusBadRequest, gin.H{"msg": "错误的 model", "code": 1})
 			return
@@ -86,7 +86,7 @@ func (f *FakeServer) GetUser() gin.HandlerFunc {
 
 // Register 注册路由
 func (f *FakeServer) Register() {
-	f.server.GET("/model", f.ChangeModel())
+	f.server.GET("/mode", f.ChangeModel())
 	f.server.GET("/users/:id", f.GetUser())
 }
 
