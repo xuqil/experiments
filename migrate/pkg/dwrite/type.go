@@ -284,3 +284,57 @@ func (d *DoubleWritePool) QueryRowContext(ctx context.Context, query string, arg
 		return d.source.QueryRowContext(ctx, query, args...)
 	}
 }
+
+func createBatch(ctx context.Context, db *sql.DB, rows int64, lastInsertId int64, query string, args ...string) error {
+	idList := make([]int64, 0, rows)
+	for i := lastInsertId; i < lastInsertId+rows; i++ {
+		idList = append(idList, i)
+	}
+	// INSERT INTO `users` (`name`,`email`,`birthday`,`created_at`,`updated_at`) VALUES (?,?,?,?,?),(?,?,?,?,?)
+	s := strings.Split(query, " ")
+	fields := s[3]      // 插入的字段
+	placeholder := s[5] // 占位符
+	newQuery := query
+	newArgs := args
+	if !strings.Contains(fields, "`ID`") { // 创建时没有指定 ID
+		qBuffer := strings.Builder{}
+		// INSERT INTO `table`
+		qBuffer.WriteString(strings.Join(s[:3], " "))
+		qBuffer.WriteByte(' ')
+		// 插入 ID 字段
+		qBuffer.WriteByte(fields[0])
+		qBuffer.WriteString("`id`,")
+		qBuffer.WriteString(fields[1:])
+		qBuffer.WriteByte(' ')
+		qBuffer.WriteString(s[4]) // VALUES
+		qBuffer.WriteByte(' ')
+		// 新增占位符
+		fieldCount := 0
+		for i, ph := range strings.Split(placeholder, ",(") {
+			if i == 0 {
+				fieldCount = len(strings.Split(ph, ","))
+				qBuffer.WriteByte(ph[0])
+				qBuffer.WriteString("?,")
+				qBuffer.WriteString(ph[1:])
+				continue
+			}
+			qBuffer.WriteString(",(?,")
+			qBuffer.WriteString(ph)
+		}
+
+		buildArgs := make([]any, 0, len(args)+int(rows))
+		for i := 0; i < len(args); i++ {
+			if i%fieldCount == 0 {
+				buildArgs = append(buildArgs, idList[i/fieldCount])
+			}
+			buildArgs = append(buildArgs, args[i])
+		}
+		newQuery = qBuffer.String()
+	}
+	_, er := db.ExecContext(ctx, newQuery, newArgs)
+	if er != nil {
+		log.Println("插入目标库失败:", er)
+		return er
+	}
+	return nil
+}
